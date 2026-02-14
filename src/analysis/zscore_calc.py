@@ -35,11 +35,18 @@ from ..database.models import (
 from .price_metric_generator import ensure_price_zscores
 from .signal_metric_generator import ensure_signal_metrics
 from .social_metric_generator import ensure_social_metrics
+from .price_metric_generator import ensure_price_zscores
+from .signal_metric_generator import ensure_signal_metrics
+from .social_metric_generator import ensure_social_metrics
 from .zprice_calc import compute_price_zscore as calc_z_price
+from ..scrapers.price_worker import store_price_snapshot
 
 # Imports des modules de calcul spécialisés
 from .zsocial_calc import compute_social_zscore as calc_z_social
 from .zvol_calc import compute_zvol, get_current_global_volume
+
+# Imports V2 Engine
+from src.analysis.zscore import compute_social_zscore_v2
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +232,16 @@ def compute_social_zscore(
         } ou None si erreur
     """
     try:
+        # Arrondir le timestamp à la fenêtre pour cohérence V2
+        now = datetime.now()
+        # Si un reference_timestamp est passé dans l'appel (via kwargs ou autre), le respecter
+        # mais ici compute_social_zscore n'a pas ref_time en arg.
+        # On utilise datetime.now() mais arrondi.
+        current_minute = (now.minute // window_minutes) * window_minutes
+        window_end = now.replace(minute=current_minute, second=0, microsecond=0)
+
         logger.info(
-            f"📊 Calcul Z-Scores pour {token.cashtag} (fenêtre {window_minutes}min)"
+            f"📊 Calcul Z-Scores pour {token.cashtag} (fenêtre {window_minutes}min) -> {window_end}"
         )
 
         # ====================================================================
@@ -250,31 +265,50 @@ def compute_social_zscore(
         logger.debug("  🔍 Vérification des SignalMetric...")
         ensure_signal_metrics(token, days_back=ANALYSIS_CONFIG["ZSCORE_WINDOW_DAYS"])
 
+        if fgi_correction is None:
+            fgi_correction = get_fear_greed_index()
+
         # ====================================================================
-        # ÉTAPE 1: Z-SCORE SOCIAL
+        # ÉTAPE 1: Z-SCORE SOCIAL V2 (MOTEUR ADAPTATIF)
         # ====================================================================
-        logger.info("  📱 Calcul Z-Score Social...")
-        z_social_result = calc_z_social(
+        logger.info("  📱 Calcul Z-Score Social V2...")
+
+        # 1. Utiliser le moteur V2 qui gère son propre pipeline (extract -> process -> pillars)
+        # Note: on passe reference_timestamp (le timestamp de la fenêtre)
+        v2_result = compute_social_zscore_v2(
             token=token,
-            window_minutes=window_minutes,
-            trading_volume_h24=trading_volume_h24,
-            lookback_days=ANALYSIS_CONFIG["ZSCORE_WINDOW_DAYS"],
-            use_seasonality=ANALYSIS_CONFIG["USE_SEASONALITY"],
+            reference_time=window_end,  # Utiliser la fin de fenêtre calculée précedemment
+            analysis_window_hours=ANALYSIS_CONFIG["ZSCORE_WINDOW_DAYS"] * 24, # 7j en heures
+            lookback_days=ANALYSIS_CONFIG["ZSCORE_WINDOW_DAYS"] * 2, # 14j extraction
+            verbose=False
         )
 
-        if z_social_result is None:
-            logger.error(f"❌ Erreur calcul Z-Score Social pour {token.cashtag}")
-            return None
+        if v2_result:
+            # Mapping V2 -> Legacy keys
+            z_score_social = v2_result.composite_score
+            social_density = v2_result.current_log_value  # V2 utilise log-volume comme valeur principale
+            
+            # Pour la rétro-compatibilité, on récupère le volume raw via le generator si possible
+            # ou on le laisse à 0 car il n'est plus critique pour le scoring V2.
+            # Mais Stage 1 a DEJA rempli SocialMetric avec le volume raw.
+            # On va donc re-fetcher le SocialMetric existant pour avoir le volume raw correct.
+            existing_metric = SocialMetric.get_or_none(
+                (SocialMetric.token == token) & 
+                (SocialMetric.timestamp == window_end)
+            )
+            social_volume = existing_metric.social_volume if existing_metric else 0.0
+            tweet_count = 0 # Non retourné par V2 (car agrégé), pas grave
 
-        z_score_social = z_social_result["z_score_social"]
-        social_volume = z_social_result["social_volume"]
-        social_density = z_social_result["social_density"]
-        tweet_count = z_social_result["tweet_count"]
-
-        logger.info(
-            f"     ✅ Z_Social = {z_score_social:.2f} | "
-            f"Densité: {social_density:.2f} | Tweets: {tweet_count}"
-        )
+            logger.info(
+                f"     ✅ Z_Social (V2) = {z_score_social:.2f} | "
+                f"Signal: {v2_result.signal} | Conf: {v2_result.confidence:.0%}"
+            )
+        else:
+            logger.warning(f"⚠️ Échec calcul Z-Score V2 pour {token.cashtag}, fallback 0.0")
+            z_score_social = 0.0
+            social_volume = 0.0
+            social_density = 0.0
+            tweet_count = 0
 
         # ====================================================================
         # ÉTAPE 1.5: STOCKAGE DU SNAPSHOT PRIX DANS PRICEMETRIC
@@ -282,8 +316,6 @@ def compute_social_zscore(
         # Stocker le prix actuel dans PriceMetric pour construire l'historique
         logger.info("  💾 Stockage snapshot prix dans PriceMetric...")
         try:
-            from ..scrapers.price_worker import store_price_snapshot
-
             # Déterminer la résolution basée sur window_minutes
             if window_minutes <= 5:
                 resolution = "5m"
@@ -383,9 +415,10 @@ def compute_social_zscore(
         # ====================================================================
         try:
             # Arrondir le timestamp à la fenêtre
-            now = datetime.now()
-            current_minute = (now.minute // window_minutes) * window_minutes
-            window_end = now.replace(minute=current_minute, second=0, microsecond=0)
+            # DEJA FAIT plus haut
+            # now = datetime.now()
+            # current_minute = (now.minute // window_minutes) * window_minutes
+            # window_end = now.replace(minute=current_minute, second=0, microsecond=0)
 
             metric, created = SocialMetric.get_or_create(
                 token=token,

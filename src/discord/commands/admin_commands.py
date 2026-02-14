@@ -13,7 +13,6 @@ from ...scrapers.dexscreener_worker import (
     resolve_incomplete_tokens,
     resolve_single_token,
 )
-from ...scrapers.token_screener import is_shutdown_requested
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +39,6 @@ class AdminCommands(commands.Cog):
                 # Résolution ciblée d'un token unique
                 await interaction.followup.send(f"🔍 Résolution du token `{symbol}`...")
                 result = await asyncio.to_thread(resolve_single_token, symbol)
-
-                if is_shutdown_requested():
-                    logger.warning(
-                        "🛑 Résolution interrompue - Pas d'envoi de message final (shutdown en cours)"
-                    )
-                    return
 
                 if result and result["success"]:
                     embed = discord.Embed(
@@ -99,12 +92,6 @@ class AdminCommands(commands.Cog):
 
                 stats = await asyncio.to_thread(resolve_incomplete_tokens)
 
-                if is_shutdown_requested():
-                    logger.warning(
-                        "🛑 Résolution interrompue - Pas d'envoi de message final (shutdown en cours)"
-                    )
-                    return
-
                 embed = discord.Embed(
                     title="✅ Résolution des tokens INCOMPLETE terminée !",
                     color=discord.Color.blue(),
@@ -130,10 +117,9 @@ class AdminCommands(commands.Cog):
 
         except Exception as e:
             logger.error(f"❌ Erreur resolve_incomplete_cmd: {e}", exc_info=True)
-            if not is_shutdown_requested():
-                await interaction.followup.send(
-                    f"❌ Une erreur est survenue lors de la résolution : {str(e)}"
-                )
+            await interaction.followup.send(
+                f"❌ Une erreur est survenue lors de la résolution : {str(e)}"
+            )
 
     @app_commands.command(
         name="scheduler", description="Gère les tâches planifiées du scheduler"

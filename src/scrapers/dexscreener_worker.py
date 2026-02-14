@@ -12,7 +12,6 @@ NOUVELLE APPROCHE (2025):
 import logging
 from typing import Any, cast
 
-from ..config import SCREENING_CONFIG
 from ..utils.api_manager import api_manager
 from ..utils.api_schemas import DexScreenerSearchResponse
 from ..utils.error_handlers import retry_db_operation
@@ -21,13 +20,19 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 DEXSCREENER_BASE = "https://api.dexscreener.com/latest/dex"
-TARGET_EXCHANGES = SCREENING_CONFIG.get("TARGET_EXCHANGES", [])
-EXCHANGE_PRIORITY_ORDER = SCREENING_CONFIG.get(
-    "EXCHANGE_PRIORITY_ORDER", TARGET_EXCHANGES
-)
-TARGET_QUOTE_ASSETS = SCREENING_CONFIG.get(
-    "TARGET_QUOTE_ASSETS", ["USDT", "USDC", "DAI", "BUSD", "WETH", "WBNB", "ETH", "BNB"]
-)
+
+# Exchange priority configuration (extracted from archived SCREENING_CONFIG)
+EXCHANGE_PRIORITY_ORDER = [
+    "MEXC",
+    "Bitget",
+    "Aster",
+    "Pionex",
+    "PancakeSwap",
+    "Uniswap",
+    "HyperLiquid",
+]
+TARGET_EXCHANGES = EXCHANGE_PRIORITY_ORDER  # Alias for compatibility
+TARGET_QUOTE_ASSETS = ["USDT", "USDC", "WETH", "WBNB", "ETH", "BNB"]
 MIN_LIQUIDITY_USD = 10000  # Minimum 10k$ de liquidité pour être considéré
 
 

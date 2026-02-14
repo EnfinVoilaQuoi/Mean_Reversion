@@ -16,7 +16,7 @@ from ...database.models import (
     Token,
 )
 from ...scrapers.price_worker import get_pair_metadata, get_token_metadata
-from ...scrapers.token_screener import (
+from ...utils.token_utils import (
     find_token_by_symbol_or_address,
     get_token_info_for_monitoring,
 )

@@ -688,6 +688,58 @@ class ScrapedGap(BaseModel):
         return f"<ScrapedGap {self.token.cashtag} {self.since_date}-{self.until_date} {self.completeness_pct:.1f}% {self.status}>"
 
 
+class TwitterAPIRule(BaseModel):
+    """
+    Stocke les règles de monitoring TwitterAPI.io actives.
+    Permet de tracker l'état des webhooks et de gérer leur cycle de vie.
+
+    Attributs:
+        token (Token): Token concerné par cette règle
+        rule_id (str): ID unique de la règle côté TwitterAPI.io
+        tag (str): Nom identifiant de la règle (ex: "monitoring_PEPE")
+        filter_value (str): Requête de filtrage complète (ex: "$PEPE OR #PEPE -is:retweet")
+        webhook_url (str): URL du webhook recevant les tweets (ex: http://ip:8001/webhook/twitter/PEPE)
+        interval_seconds (int): Fréquence de vérification en secondes (min 0.1, max 86400)
+        is_active (bool): Règle active (True) ou pause (False)
+        created_at (datetime): Date de création de la règle
+        activated_at (datetime): Date d'activation du webhook
+        last_triggered_at (datetime): Dernière fois que la règle a envoyé des tweets
+        deactivated_at (datetime): Date de désactivation (NULL si active)
+        total_tweets_received (int): Nombre total de tweets reçus via ce webhook
+    """
+
+    id = AutoField()
+    token = ForeignKeyField(Token, backref="twitterapi_rules", index=True)
+    rule_id = CharField(unique=True, index=True)  # ID TwitterAPI.io
+    tag = CharField(index=True)  # Nom de la règle
+    filter_value = TextField()  # Requête de filtrage complète
+    webhook_url = TextField()  # URL du webhook
+    interval_seconds = IntegerField(default=300)  # Fréquence (5min par défaut)
+
+    # État de la règle
+    is_active = BooleanField(default=True, index=True)
+
+    # Timestamps
+    created_at = DateTimeField(default=datetime.now, index=True)
+    activated_at = DateTimeField(null=True)
+    last_triggered_at = DateTimeField(null=True)
+    deactivated_at = DateTimeField(null=True)
+
+    # Statistiques
+    total_tweets_received = IntegerField(default=0)
+
+    class Meta:
+        table_name = "twitterapi_rules"
+        indexes = (
+            (("token", "is_active"), False),  # Pour lister les règles actives par token
+            (("is_active",), False),  # Pour lister toutes les règles actives
+        )
+
+    def __repr__(self):
+        status = "ACTIVE" if self.is_active else "PAUSED"
+        return f"<TwitterAPIRule {self.tag} ({status}) - {self.token.cashtag}>"
+
+
 # ============================================================================
 # 6. FONCTION D'INITIALISATION
 # ============================================================================
@@ -715,6 +767,8 @@ def initialize_db():
                     SignalMetric,
                     MacroMetric,
                     ScrapedGap,
+                    GapAttempt,
+                    TwitterAPIRule,
                 ],
                 safe=True,
             )

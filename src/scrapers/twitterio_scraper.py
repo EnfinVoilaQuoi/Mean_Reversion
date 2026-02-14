@@ -167,188 +167,247 @@ def search_tweets_twitterio(
         )
         query_type = "Latest"
 
-    # Construction de la requête de recherche
-    # Format: "$WAVES since:2024-11-24 until:2024-12-01"
-    # Ou avec heure: "$WAVES since:2025-12-10T00:00:00Z until:2025-12-10T06:00:00Z"
-    query_parts = [cashtag]
-
-    # Ajouter la date de début
-    query_parts.append(f"since:{since_date}")
-
-    # Ajouter la date de fin si fournie
-    # IMPORTANTE: Le paramètre "until" est EXCLUSIF - il cherche les tweets AVANT cette date
-    # Donc si on veut les tweets du 2025-11-28, il faut passer until:2025-11-29
-    # NOTE: Si l'heure est fournie (format ISO avec T), on ne modifie PAS la date
-    if until_date:
-        # Vérifier si l'heure est incluse dans le format (présence de 'T')
-        if "T" in until_date:
-            # Format avec heure (ex: 2025-12-10T06:00:00Z) - utiliser tel quel
-            adjusted_until = until_date
-            logger.debug(
-                f"   Date until avec heure fournie: {until_date} (utilisée telle quelle)"
-            )
-        else:
-            # Format sans heure (ex: 2025-12-10) - ajouter 1 jour comme avant
-            until_dt = datetime.strptime(until_date, "%Y-%m-%d")
-            until_dt_plus_one = until_dt + timedelta(days=1)
-            adjusted_until = until_dt_plus_one.strftime("%Y-%m-%d")
-            logger.debug(
-                f"   Ajustement until: {until_date} → {adjusted_until} (paramètre exclusif)"
-            )
-
-        query_parts.append(f"until:{adjusted_until}")
-
-    base_query = " ".join(query_parts)
-
-    logger.info(f"🔍 Recherche TwitterAPI.io [{query_type}]: {base_query}")
+    logger.info(f"🔍 Recherche TwitterAPI.io [{query_type}]: {cashtag} since:{since_date}" +
+                (f" until:{until_date}" if until_date else ""))
 
     # Paramètres de la requête
     url = f"{TWITTERIO_BASE_URL}{TWITTERIO_SEARCH_ENDPOINT}"
     headers = {"x-api-key": TWITTERIO_API_KEY, "Content-Type": "application/json"}
 
-    all_tweets: list[dict[str, Any]] = []
-    seen_tweet_ids: set[str] = set()  # Pour déduplication (nécessaire avec max_id)
-    cursor = None
-    last_min_id: str | None = None  # Track le plus ancien tweet ID pour pagination
-    page_count = 0
-    max_pages = 50  # Limite de sécurité pour éviter les boucles infinies
+    # Variables accumulatives globales (persistent entre retries)
+    all_tweets_global: list[dict[str, Any]] = []
+    seen_tweet_ids_global: set[str] = set()
+    retry_count = 0
+    max_retries = 10  # Protection anti-boucle infinie
+    max_pages = 75  # Limite de sécurité augmentée pour tokens très actifs
+
+    # Sauvegarder since_date original (ne change jamais)
+    original_since_date = since_date
 
     try:
-        while len(all_tweets) < max_tweets and page_count < max_pages:
-            # Construire la query avec max_id si nécessaire
-            # Cela permet de récupérer des tweets plus anciens que last_min_id
-            query = base_query
-            if last_min_id:
-                query = f"{base_query} max_id:{last_min_id}"
-                logger.debug(f"   Ajout max_id à la query: max_id:{last_min_id}")
+        # === BOUCLE RETRY ===
+        while retry_count < max_retries:
+            # Variables pour cette tentative (réinitialisées à chaque retry)
+            all_tweets: list[dict[str, Any]] = []
+            seen_tweet_ids: set[str] = set()  # Local à cette tentative
+            cursor = None
+            last_min_id: str | None = None
+            page_count = 0
+            tweets_found_in_page = 0  # Track si dernière page avait des tweets
 
-            # Paramètres de la requête
-            params = {
-                "query": query,
-                "queryType": query_type,  # Type de recherche (Latest, Top, Media)
-                "count": 20,  # Nombre de tweets par page (max supporté par l'API)
-            }
+            # Construire base_query pour cette tentative
+            # IMPORTANTE: Le paramètre "until" est EXCLUSIF - il cherche les tweets AVANT cette date
+            query_parts = [cashtag, f"since:{original_since_date}"]
 
-            # Ajouter le cursor pour la pagination
-            if cursor:
-                params["cursor"] = cursor
+            if until_date:
+                # Vérifier si l'heure est incluse dans le format (présence de 'T')
+                if "T" in until_date:
+                    # Format avec heure (ex: 2025-12-10T06:00:00Z) - utiliser tel quel
+                    adjusted_until = until_date
+                else:
+                    # Format sans heure (ex: 2025-12-10) - ajouter 1 jour
+                    until_dt = datetime.strptime(until_date, "%Y-%m-%d")
+                    until_dt_plus_one = until_dt + timedelta(days=1)
+                    adjusted_until = until_dt_plus_one.strftime("%Y-%m-%d")
 
-            # Effectuer la requête
-            logger.debug(
-                f"📡 Requête page {page_count + 1} (cursor: {cursor[:20] if cursor else 'None'}, max_id: {last_min_id or 'None'})"
-            )
+                query_parts.append(f"until:{adjusted_until}")
 
-            response = requests.get(
-                url, headers=headers, params=cast(Any, params), timeout=60
-            )
+            base_query = " ".join(query_parts)
 
-            # Vérifier le statut de la réponse
-            if response.status_code != 200:
-                logger.error(f"❌ Erreur API: {response.status_code}")
-                logger.error(f"Réponse: {response.text}")
-                raise TwitterIOError(f"Erreur API: {response.status_code}")
+            # Afficher la requête pour cette tentative (y compris retries)
+            if retry_count > 0:
+                logger.info(f"🔍 Recherche TwitterAPI.io [{query_type}] (Retry {retry_count}): {base_query}")
 
-            # Parser la réponse JSON
-            data = response.json()
+            # === PAGINATION NORMALE ===
+            while len(all_tweets) < max_tweets and page_count < max_pages:
+                # Construire la query avec max_id si nécessaire
+                # Cela permet de récupérer des tweets plus anciens que last_min_id
+                query = base_query
+                if last_min_id:
+                    query = f"{base_query} max_id:{last_min_id}"
+                    logger.debug(f"   Ajout max_id à la query: max_id:{last_min_id}")
 
-            # Vérifier si la réponse contient des données
-            if not data or "tweets" not in data:
-                logger.warning("⚠️ Aucune donnée dans la réponse")
-                break
+                # Paramètres de la requête
+                params = {
+                    "query": query,
+                    "queryType": query_type,  # Type de recherche (Latest, Top, Media)
+                    "count": 20,  # Nombre de tweets par page (max supporté par l'API)
+                }
 
-            # Extraire les tweets
-            tweets_in_page = data.get("tweets", [])
+                # Ajouter le cursor pour la pagination
+                if cursor:
+                    params["cursor"] = cursor
 
-            if not tweets_in_page:
-                logger.info("✅ Fin de la pagination (pas de tweets)")
-                break
-
-            # Parser chaque tweet
-            tweets_found_in_page = 0
-            current_page_min_id: str | None = None  # Track le min_id de cette page
-
-            for tweet_data in tweets_in_page:
-                # Ignorer les tweets qui ne sont pas du type "tweet"
-                if tweet_data.get("type") != "tweet":
-                    continue
-
-                # Extraire l'ID du tweet pour déduplication
-                tweet_id = tweet_data.get("id", "")
-
-                # Ignorer les tweets déjà vus (important avec max_id car il peut y avoir des overlaps)
-                if tweet_id in seen_tweet_ids:
-                    logger.debug(f"   Tweet {tweet_id} déjà vu, ignoré (déduplication)")
-                    continue
-
-                # Marquer comme vu
-                seen_tweet_ids.add(tweet_id)
-
-                # Parser le tweet
-                parsed_tweet = parse_twitterio_tweet(tweet_data, cashtag)
-
-                if parsed_tweet:
-                    all_tweets.append(parsed_tweet)
-                    tweets_found_in_page += 1
-
-                    # Tracker le min_id (ID le plus ancien) pour la pagination avec max_id
-                    # Les IDs Twitter sont chronologiques, donc on cherche le plus petit
-                    if current_page_min_id is None or tweet_id < current_page_min_id:
-                        current_page_min_id = tweet_id
-
-            # Mettre à jour last_min_id pour la prochaine itération
-            if current_page_min_id:
-                last_min_id = current_page_min_id
-                logger.debug(f"   last_min_id mis à jour: {last_min_id}")
-
-            # Calcul des tweets filtrés (spam, doublons, etc.)
-            filtered_count = len(seen_tweet_ids) - len(all_tweets)
-            if filtered_count > 0:
-                logger.info(
-                    f"✅ Page {page_count + 1}: {tweets_found_in_page} tweets collectés "
-                    f"(Total: {len(all_tweets)}, Filtrés: {filtered_count})"
-                )
-            else:
-                logger.info(
-                    f"✅ Page {page_count + 1}: {tweets_found_in_page} tweets collectés "
-                    f"(Total: {len(all_tweets)})"
-                )
-
-            # Récupérer le cursor pour la page suivante (si disponible)
-            next_cursor = data.get("next_cursor", None)
-
-            # Logique de pagination avec cursor ET max_id
-            # Stratégie: utiliser cursor tant qu'il existe, sinon utiliser max_id pour aller plus loin
-            if not next_cursor and tweets_found_in_page > 0 and last_min_id:
-                # Pas de cursor mais on a des nouveaux tweets
-                # => On va utiliser max_id pour récupérer des tweets plus anciens
-                cursor = None  # Reset cursor pour forcer l'utilisation de max_id
+                # Effectuer la requête
                 logger.debug(
-                    "   Pas de next_cursor mais nouveaux tweets trouvés, "
-                    "utilisation de max_id pour continuer la pagination"
+                    f"📡 Requête page {page_count + 1} (cursor: {cursor[:20] if cursor else 'None'}, max_id: {last_min_id or 'None'})"
                 )
-            elif next_cursor:
-                # Il y a un cursor, l'utiliser normalement
-                cursor = next_cursor
+
+                response = requests.get(
+                    url, headers=headers, params=cast(Any, params), timeout=60
+                )
+
+                # Vérifier le statut de la réponse
+                if response.status_code != 200:
+                    logger.error(f"❌ Erreur API: {response.status_code}")
+                    logger.error(f"Réponse: {response.text}")
+                    raise TwitterIOError(f"Erreur API: {response.status_code}")
+
+                # Parser la réponse JSON
+                data = response.json()
+
+                # Vérifier si la réponse contient des données
+                if not data or "tweets" not in data:
+                    logger.warning("⚠️ Aucune donnée dans la réponse")
+                    break
+
+                # Extraire les tweets
+                tweets_in_page = data.get("tweets", [])
+
+                if not tweets_in_page:
+                    logger.info("✅ Fin de la pagination (pas de tweets)")
+                    break
+
+                # Parser chaque tweet
+                tweets_found_in_page = 0
+                current_page_min_id: str | None = None  # Track le min_id de cette page
+
+                for tweet_data in tweets_in_page:
+                    # Ignorer les tweets qui ne sont pas du type "tweet"
+                    if tweet_data.get("type") != "tweet":
+                        continue
+
+                    # Extraire l'ID du tweet pour déduplication
+                    tweet_id = tweet_data.get("id", "")
+
+                    # Ignorer les tweets déjà vus (important avec max_id car il peut y avoir des overlaps)
+                    if tweet_id in seen_tweet_ids:
+                        logger.debug(f"   Tweet {tweet_id} déjà vu, ignoré (déduplication)")
+                        continue
+
+                    # Marquer comme vu
+                    seen_tweet_ids.add(tweet_id)
+
+                    # Parser le tweet
+                    parsed_tweet = parse_twitterio_tweet(tweet_data, cashtag)
+
+                    if parsed_tweet:
+                        all_tweets.append(parsed_tweet)
+                        tweets_found_in_page += 1
+
+                        # Tracker le min_id (ID le plus ancien) pour la pagination avec max_id
+                        # Les IDs Twitter sont chronologiques, donc on cherche le plus petit
+                        if current_page_min_id is None or tweet_id < current_page_min_id:
+                            current_page_min_id = tweet_id
+
+                # Mettre à jour last_min_id pour la prochaine itération
+                if current_page_min_id:
+                    last_min_id = current_page_min_id
+                    logger.debug(f"   last_min_id mis à jour: {last_min_id}")
+
+                # Calcul des tweets filtrés (spam, doublons, etc.)
+                filtered_count = len(seen_tweet_ids) - len(all_tweets)
+                if filtered_count > 0:
+                    logger.info(
+                        f"✅ Page {page_count + 1}: {tweets_found_in_page} tweets collectés "
+                        f"(Total: {len(all_tweets)}, Filtrés: {filtered_count})"
+                    )
+                else:
+                    logger.info(
+                        f"✅ Page {page_count + 1}: {tweets_found_in_page} tweets collectés "
+                        f"(Total: {len(all_tweets)})"
+                    )
+
+                # Récupérer le cursor pour la page suivante (si disponible)
+                next_cursor = data.get("next_cursor", None)
+
+                # Logique de pagination avec cursor ET max_id
+                # Stratégie: utiliser cursor tant qu'il existe, sinon utiliser max_id pour aller plus loin
+                if not next_cursor and tweets_found_in_page > 0 and last_min_id:
+                    # Pas de cursor mais on a des nouveaux tweets
+                    # => On va utiliser max_id pour récupérer des tweets plus anciens
+                    cursor = None  # Reset cursor pour forcer l'utilisation de max_id
+                    logger.debug(
+                        "   Pas de next_cursor mais nouveaux tweets trouvés, "
+                        "utilisation de max_id pour continuer la pagination"
+                    )
+                elif next_cursor:
+                    # Il y a un cursor, l'utiliser normalement
+                    cursor = next_cursor
+                else:
+                    # Pas de cursor et pas de nouveaux tweets = fin de la pagination
+                    logger.info(
+                        "✅ Fin de la pagination (pas de cursor suivant et pas de nouveaux tweets)"
+                    )
+                    break
+
+                page_count += 1
+
+                # Pause entre les requêtes pour respecter les rate limits
+                if page_count < max_pages and len(all_tweets) < max_tweets:
+                    time.sleep(5.5)  # 5.5 secondes entre chaque page (API limite: 1 req/5s)
+
+            # === DÉTECTION RETRY ===
+            # Vérifier si on a atteint la limite de pages ET que la dernière page contenait des tweets
+            if page_count >= max_pages and len(all_tweets) > 0 and tweets_found_in_page > 0:
+                # Limite atteinte avec des tweets manquants potentiels, calculer le gap
+                last_tweet = all_tweets[-1]
+                last_timestamp = last_tweet.get("posted_at") or last_tweet.get("timestamp")
+
+                if last_timestamp and isinstance(last_timestamp, datetime):
+                    # Arrondir à l'heure supérieure
+                    # IMPORTANT : L'API Twitter until: est EXCLUSIF (cherche AVANT cette date)
+                    # - Format sans heure (YYYY-MM-DD) : le code existant ajoute +1 jour
+                    # - Format avec heure (ISO) : utilisé tel quel, PAS de +1 jour
+                    # Exemple : dernier tweet à 15h30 → arrondi à 16h00
+                    #           until:2025-12-12T16:00:00Z cherche AVANT 16h00 (jusqu'à 15h59:59)
+                    gap_until = last_timestamp.replace(minute=0, second=0, microsecond=0)
+                    gap_until += timedelta(hours=1)
+                    gap_until_str = gap_until.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                    # Merger les résultats de cette tentative dans la collection globale
+                    for tweet in all_tweets:
+                        tweet_id = tweet.get("tweet_id")
+                        if tweet_id and tweet_id not in seen_tweet_ids_global:
+                            seen_tweet_ids_global.add(tweet_id)
+                            all_tweets_global.append(tweet)
+
+                    logger.warning(
+                        f"⚠️ Retry {retry_count+1}: Limite atteinte ({page_count} pages), "
+                        f"gap détecté {original_since_date} → {gap_until_str}"
+                    )
+
+                    # Préparer le retry sur le gap manquant
+                    until_date = gap_until_str
+                    retry_count += 1
+                    continue  # Relancer la boucle retry avec le nouveau until_date
+                else:
+                    # Pas de timestamp valide sur le dernier tweet, impossible de calculer le gap
+                    logger.warning("⚠️ Impossible de calculer le gap (timestamp invalide), arrêt du retry")
+                    # Merger les résultats finaux avant de sortir
+                    for tweet in all_tweets:
+                        tweet_id = tweet.get("tweet_id")
+                        if tweet_id and tweet_id not in seen_tweet_ids_global:
+                            seen_tweet_ids_global.add(tweet_id)
+                            all_tweets_global.append(tweet)
+                    break
             else:
-                # Pas de cursor et pas de nouveaux tweets = fin de la pagination
-                logger.info(
-                    "✅ Fin de la pagination (pas de cursor suivant et pas de nouveaux tweets)"
-                )
-                break
-
-            page_count += 1
-
-            # Pause entre les requêtes pour respecter les rate limits
-            if page_count < max_pages and len(all_tweets) < max_tweets:
-                time.sleep(5.5)  # 5.5 secondes entre chaque page (API limite: 1 req/5s)
+                # Pas de retry nécessaire : pagination terminée normalement (< max_pages OU dernière page vide)
+                # Merger les résultats finaux
+                for tweet in all_tweets:
+                    tweet_id = tweet.get("tweet_id")
+                    if tweet_id and tweet_id not in seen_tweet_ids_global:
+                        seen_tweet_ids_global.add(tweet_id)
+                        all_tweets_global.append(tweet)
+                break  # Sortir de la boucle retry
 
         # Limiter au nombre max demandé
-        if len(all_tweets) > max_tweets:
-            all_tweets = all_tweets[:max_tweets]
+        if len(all_tweets_global) > max_tweets:
+            all_tweets_global = all_tweets_global[:max_tweets]
 
-        logger.info(f"🎉 Scraping terminé: {len(all_tweets)} tweets récupérés")
+        logger.info(f"🎉 Scraping terminé: {len(all_tweets_global)} tweets récupérés")
 
-        return all_tweets
+        return all_tweets_global
 
     except requests.exceptions.RequestException as e:
         logger.error(f"❌ Erreur de connexion à l'API: {e}")

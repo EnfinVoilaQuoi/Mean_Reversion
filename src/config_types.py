@@ -177,22 +177,6 @@ class AnalysisConfig(TypedDict):
 # ============================================================================
 
 
-class ScreeningConfig(TypedDict):
-    """Token screening and discovery configuration."""
-
-    TOP_LIMIT: int  # 1000 (top N tokens)
-    EXCHANGE_PRIORITY_ORDER: list[str]  # ['MEXC', 'Bitget', ...]
-    TARGET_EXCHANGES: list[str]
-    TARGET_QUOTE_ASSETS: list[str]  # ['USDT', 'USDC', ...]
-    IGNORE_CHAINS: list[str]  # ['testnet', ...]
-    COINGECKO_RATE_LIMIT: int  # 30 req/min
-    REQUEST_DELAY: float  # 2.0 seconds
-    MAX_RETRIES: int  # 3 attempts
-    REQUEST_TIMEOUT: int  # 30 seconds
-    DERIVATIVE_MAPPING: dict[str, str]  # WBTC→BTC mapping
-    EXCLUDED_STABLECOINS: list[str]  # Extensive stablecoin list
-    NATIVE_COINS: list[str]  # L1 coins without contracts
-
 
 # ============================================================================
 # 6. EXTERNAL APIS CONFIGURATION
@@ -303,13 +287,3 @@ class DiscordConfig(TypedDict):
 # ============================================================================
 
 
-class VerificationConfig(TypedDict):
-    """Twitter verification monitoring configuration."""
-
-    CHECK_INTERVAL_HOURS: int  # 24h
-    CHECK_TIME_HOUR: int  # 2 AM
-    CHECK_TIME_MINUTE: int  # 30
-    CHECK_ONLY_VERIFIED: bool  # True (optimization)
-    RATE_LIMIT_DELAY: float  # 1.5 seconds
-    BATCH_SIZE: int | None  # None = all tokens
-    HUMAN_LIKE_BEHAVIOR: bool  # True (randomize delays)

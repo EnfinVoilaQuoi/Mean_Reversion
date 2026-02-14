@@ -75,7 +75,8 @@ async def on_ready():
         "                          /twscrape_status, /twscrape_reset, /twscrape_test,"
     )
     print("                          /gap_complete, /gap_list, /gap_delete,")
-    print("                          /aggregate, /aggregate_all, /pipeline_status")
+    print("                          /aggregate, /aggregate_all, /pipeline_status,")
+    print("                          /webhook list, /webhook create, /webhook stop, /webhook del")
     print(
         "\n⏳ ATTENDEZ 20-30 secondes avant d'utiliser les commandes (synchronisation Discord)"
     )
@@ -159,6 +160,7 @@ async def load_cogs():
     from .commands.backfill_commands import BackfillCommands
     from .commands.gap_commands import GapCommands
     from .commands.info_commands import InfoCommands
+    from .commands.rule_commands import RuleCommands
     from .commands.token_commands import TokenCommands
     from .commands.twscrape_commands import TwscrapeCommands
     # from .commands.verification_commands import VerificationCommands  # ARCHIVÉ
@@ -178,6 +180,7 @@ async def load_cogs():
         TwscrapeCommands(bot),
         GapCommands(bot),
         AggregatorCommands(bot),
+        RuleCommands(bot),  # Gestion des règles TwitterAPI.io
     ]
 
     for cog in cogs:

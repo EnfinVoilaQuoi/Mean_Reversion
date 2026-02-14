@@ -398,7 +398,7 @@ def create_monitoring_tab():
                             style={"color": "#7f8c8d", "fontSize": "14px"},
                         ),
                         # Le tableau de données
-                        dash_table.DataTable(  # type: ignore[attr-defined]
+                        dash_table.DataTable(
                             id="token-status-table",
                             columns=[
                                 {"name": "Token", "id": "Token", "type": "text"},
@@ -492,7 +492,7 @@ def create_monitoring_tab():
                                 ),
                                 dcc.RadioItems(
                                     id="frequency-radio",
-                                    options=[  # type: ignore[arg-type]
+                                    options=[
                                         {
                                             "label": " 🔵 CROISIERE (60 min)",
                                             "value": "CROISIERE",
@@ -615,7 +615,7 @@ def create_monitoring_tab():
                                         "marginBottom": "15px",
                                     },
                                 ),
-                                dash_table.DataTable(  # type: ignore[attr-defined]
+                                dash_table.DataTable(
                                     id="social-details-table",
                                     columns=[
                                         {"name": "Heure", "id": "Heure"},

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Module pour l'onglet Gap Coverage du dashboard.
 
 Fournit des visualisations et statistiques sur la couverture des gaps de scraping.
@@ -20,56 +20,56 @@ logger = logging.getLogger(__name__)
 
 def fetch_gap_coverage_data(token_id: int, days_back: int = 7) -> dict:
     """
-    Récupère les données de couverture des gaps pour un token.
+    RÃ©cupÃ¨re les donnÃ©es de couverture des gaps pour un token.
 
     Args:
         token_id: ID du token
-        days_back: Nombre de jours en arrière pour l'analyse
+        days_back: Nombre de jours en arriÃ¨re pour l'analyse
 
     Returns:
         dict avec:
         - gaps_summary: DataFrame des gaps avec statut
-        - scraping_stats: Statistiques de scraping par méthode
+        - scraping_stats: Statistiques de scraping par mÃ©thode
         - nitter_stats: Statistiques par instance Nitter
-        - summary_stats: Résumé global des gaps
+        - summary_stats: RÃ©sumÃ© global des gaps
     """
     try:
         token = Token.get_by_id(token_id)
 
-        # 1. Récupérer le résumé de scraping
+        # 1. RÃ©cupÃ©rer le rÃ©sumÃ© de scraping
         summary = get_scraping_summary(token, days=days_back)
 
-        # 2. Récupérer tous les gaps du token
+        # 2. RÃ©cupÃ©rer tous les gaps du token
         gaps = list(ScrapedGap.select().where(ScrapedGap.token == token))
 
-        # 3. Créer DataFrame des gaps
+        # 3. CrÃ©er DataFrame des gaps
         gaps_data = []
         for gap in gaps:
             gaps_data.append({
                 'Gap ID': gap.id,
                 'Depuis': gap.since_date,
-                'Jusqu\'à': gap.until_date,
+                'Jusqu\'Ã ': gap.until_date,
                 'Heures Attendues': gap.expected_hours,
                 'Heures Couvertes': gap.covered_hours,
-                'Complétude (%)': f"{gap.completeness_pct:.1f}",
+                'ComplÃ©tude (%)': f"{gap.completeness_pct:.1f}",
                 'Statut': gap.status,
-                'Méthodes Essayées': gap.methods_tried or '-',
-                'Première Tentative': gap.first_attempt.strftime('%Y-%m-%d %H:%M') if gap.first_attempt else '-',
-                'Dernière Tentative': gap.last_attempt.strftime('%Y-%m-%d %H:%M') if gap.last_attempt else '-',
+                'MÃ©thodes EssayÃ©es': gap.methods_tried or '-',
+                'PremiÃ¨re Tentative': gap.first_attempt.strftime('%Y-%m-%d %H:%M') if gap.first_attempt else '-',
+                'DerniÃ¨re Tentative': gap.last_attempt.strftime('%Y-%m-%d %H:%M') if gap.last_attempt else '-',
             })
 
         gaps_df = pd.DataFrame(gaps_data)
 
-        # 4. Statistiques de scraping par méthode
+        # 4. Statistiques de scraping par mÃ©thode
         scraping_stats = []
         for method, stats in summary['methods'].items():
             scraping_stats.append({
-                'Méthode': method,
+                'MÃ©thode': method,
                 'Tentatives': stats['total_attempts'],
-                'Succès': stats['success'],
-                'Échecs': stats['failed'],
-                'Taux de Succès (%)': f"{stats['success_rate']:.1f}",
-                'Tweets Récupérés': stats['total_tweets'],
+                'SuccÃ¨s': stats['success'],
+                'Ã‰checs': stats['failed'],
+                'Taux de SuccÃ¨s (%)': f"{stats['success_rate']:.1f}",
+                'Tweets RÃ©cupÃ©rÃ©s': stats['total_tweets'],
             })
 
         scraping_stats_df = pd.DataFrame(scraping_stats)
@@ -80,8 +80,8 @@ def fetch_gap_coverage_data(token_id: int, days_back: int = 7) -> dict:
             nitter_stats.append({
                 'Instance': instance,
                 'Tentatives': stats['attempts'],
-                'Succès': stats['success'],
-                'Taux de Succès (%)': f"{stats['success_rate']:.1f}",
+                'SuccÃ¨s': stats['success'],
+                'Taux de SuccÃ¨s (%)': f"{stats['success_rate']:.1f}",
             })
 
         nitter_stats_df = pd.DataFrame(nitter_stats)
@@ -108,40 +108,40 @@ def fetch_gap_coverage_data(token_id: int, days_back: int = 7) -> dict:
 
 
 def create_gap_coverage_tab():
-    """Crée le contenu de l'onglet Gap Coverage"""
+    """CrÃ©e le contenu de l'onglet Gap Coverage"""
     return html.Div([
         # Header de l'onglet
         html.Div([
             html.H2(
-                "🔍 Gap Coverage - Analyse de Complétude",
+                "ðŸ” Gap Coverage - Analyse de ComplÃ©tude",
                 style={"color": "#34495e", "marginBottom": "15px"},
             ),
             html.P(
-                "Suivi détaillé de la couverture des gaps de scraping avec analyse par méthode et instance Nitter",
+                "Suivi dÃ©taillÃ© de la couverture des gaps de scraping avec analyse par mÃ©thode et instance Nitter",
                 style={"color": "#7f8c8d", "fontSize": "14px"},
             ),
         ]),
 
         html.Hr(),
 
-        # Sélecteur de token
+        # SÃ©lecteur de token
         html.Div([
-            html.H3("Sélectionner un Token", style={"color": "#34495e", "marginBottom": "10px"}),
+            html.H3("SÃ©lectionner un Token", style={"color": "#34495e", "marginBottom": "10px"}),
             dcc.Dropdown(
                 id="gap-token-selector",
                 options=[],
                 value=None,
-                placeholder="Sélectionner un Token pour l'analyse des gaps",
+                placeholder="SÃ©lectionner un Token pour l'analyse des gaps",
             ),
         ], style={"marginBottom": "30px"}),
 
-        # Panneau de résumé global
+        # Panneau de rÃ©sumÃ© global
         html.Div(id="gap-summary-panel", style={"marginBottom": "30px"}),
 
-        # Section: Statistiques de scraping par méthode
+        # Section: Statistiques de scraping par mÃ©thode
         html.Div([
             html.H3(
-                "📊 Performance par Méthode de Scraping",
+                "ðŸ“Š Performance par MÃ©thode de Scraping",
                 style={"color": "#34495e", "marginBottom": "15px"},
             ),
             dcc.Loading(
@@ -149,7 +149,7 @@ def create_gap_coverage_tab():
                 type="default",
                 children=[
                     dcc.Graph(id="scraping-methods-chart"),
-                    dash_table.DataTable(  # type: ignore[attr-defined]
+                    dash_table.DataTable(
                         id="scraping-stats-table",
                         columns=[],
                         data=[],
@@ -180,7 +180,7 @@ def create_gap_coverage_tab():
         # Section: Statistiques par instance Nitter
         html.Div([
             html.H3(
-                "🌐 Performance des Instances Nitter",
+                "ðŸŒ Performance des Instances Nitter",
                 style={"color": "#34495e", "marginBottom": "15px"},
             ),
             dcc.Loading(
@@ -188,7 +188,7 @@ def create_gap_coverage_tab():
                 type="default",
                 children=[
                     dcc.Graph(id="nitter-instances-chart"),
-                    dash_table.DataTable(  # type: ignore[attr-defined]
+                    dash_table.DataTable(
                         id="nitter-stats-table",
                         columns=[],
                         data=[],
@@ -216,14 +216,14 @@ def create_gap_coverage_tab():
             "marginBottom": "30px",
         }),
 
-        # Section: Tableau détaillé des gaps
+        # Section: Tableau dÃ©taillÃ© des gaps
         html.Div([
             html.H3(
-                "📋 Liste Complète des Gaps",
+                "ðŸ“‹ Liste ComplÃ¨te des Gaps",
                 style={"color": "#34495e", "marginBottom": "15px"},
             ),
             html.P(
-                "Filtrer par statut pour voir les gaps nécessitant une attention",
+                "Filtrer par statut pour voir les gaps nÃ©cessitant une attention",
                 style={"color": "#7f8c8d", "fontSize": "14px", "marginBottom": "15px"},
             ),
             dcc.RadioItems(
@@ -232,7 +232,7 @@ def create_gap_coverage_tab():
                     {"label": " Tous", "value": "all"},
                     {"label": " Partiels", "value": "partial"},
                     {"label": " Complets", "value": "complete"},
-                    {"label": " Épuisés", "value": "all_methods_exhausted"},
+                    {"label": " Ã‰puisÃ©s", "value": "all_methods_exhausted"},
                     {"label": " En attente", "value": "pending"},
                 ],
                 value="all",
@@ -242,7 +242,7 @@ def create_gap_coverage_tab():
             dcc.Loading(
                 id="loading-gaps-table",
                 type="default",
-                children=dash_table.DataTable(  # type: ignore[attr-defined]
+                children=dash_table.DataTable(
                     id="gaps-detail-table",
                     columns=[],
                     data=[],
@@ -275,7 +275,7 @@ def create_gap_coverage_tab():
                             "backgroundColor": "#fff3cd",
                             "color": "black",
                         },
-                        # Gaps épuisés (rouge clair)
+                        # Gaps Ã©puisÃ©s (rouge clair)
                         {
                             "if": {"filter_query": "{Statut} = 'all_methods_exhausted'"},
                             "backgroundColor": "#f8d7da",
@@ -302,26 +302,26 @@ def create_gap_coverage_tab():
 
 def create_gap_summary_panel(data: dict) -> html.Div:
     """
-    Crée le panneau de résumé global des gaps.
+    CrÃ©e le panneau de rÃ©sumÃ© global des gaps.
 
     Args:
-        data: Données de gap_coverage (summary_stats, total_attempts, token_cashtag)
+        data: DonnÃ©es de gap_coverage (summary_stats, total_attempts, token_cashtag)
 
     Returns:
-        html.Div avec le panneau de résumé
+        html.Div avec le panneau de rÃ©sumÃ©
     """
     summary = data['summary_stats']
     token_cashtag = data['token_cashtag']
     total_attempts = data['total_attempts']
 
-    # Calculer le pourcentage de complétude
+    # Calculer le pourcentage de complÃ©tude
     total_gaps = summary['total']
     complete_pct = (summary['complete'] / total_gaps * 100) if total_gaps > 0 else 0
     partial_pct = (summary['partial'] / total_gaps * 100) if total_gaps > 0 else 0
     exhausted_pct = (summary['exhausted'] / total_gaps * 100) if total_gaps > 0 else 0
     pending_pct = (summary['pending'] / total_gaps * 100) if total_gaps > 0 else 0
 
-    # Couleur du panneau selon complétude moyenne
+    # Couleur du panneau selon complÃ©tude moyenne
     avg_completeness = summary['avg_completeness']
     if avg_completeness >= 90:
         panel_color = "#d4edda"
@@ -334,7 +334,7 @@ def create_gap_summary_panel(data: dict) -> html.Div:
         panel_border = "#f5c6cb"
 
     return html.Div([
-        html.H3(f"Résumé Global: {token_cashtag}", style={"color": "#2c3e50", "marginBottom": "15px"}),
+        html.H3(f"RÃ©sumÃ© Global: {token_cashtag}", style={"color": "#2c3e50", "marginBottom": "15px"}),
 
         # Cartes de statistiques
         html.Div([
@@ -383,13 +383,13 @@ def create_gap_summary_panel(data: dict) -> html.Div:
                 "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
             }),
 
-            # Carte 4: Gaps épuisés
+            # Carte 4: Gaps Ã©puisÃ©s
             html.Div([
                 html.H4(
                     f"{summary['exhausted']} ({exhausted_pct:.0f}%)",
                     style={"fontSize": "32px", "margin": "0", "color": "#e74c3c"}
                 ),
-                html.P("Épuisés", style={"margin": "5px 0", "color": "#7f8c8d"}),
+                html.P("Ã‰puisÃ©s", style={"margin": "5px 0", "color": "#7f8c8d"}),
             ], style={
                 "flex": "1",
                 "padding": "20px",
@@ -399,10 +399,10 @@ def create_gap_summary_panel(data: dict) -> html.Div:
                 "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
             }),
 
-            # Carte 5: Complétude moyenne
+            # Carte 5: ComplÃ©tude moyenne
             html.Div([
                 html.H4(f"{avg_completeness:.1f}%", style={"fontSize": "32px", "margin": "0", "color": "#9b59b6"}),
-                html.P("Complétude Moyenne", style={"margin": "5px 0", "color": "#7f8c8d"}),
+                html.P("ComplÃ©tude Moyenne", style={"margin": "5px 0", "color": "#7f8c8d"}),
             ], style={
                 "flex": "1",
                 "padding": "20px",
@@ -439,47 +439,47 @@ def create_gap_summary_panel(data: dict) -> html.Div:
 
 
 def create_scraping_methods_chart(scraping_stats_df: pd.DataFrame) -> go.Figure:
-    """Crée un graphique des performances par méthode de scraping"""
+    """CrÃ©e un graphique des performances par mÃ©thode de scraping"""
     if scraping_stats_df.empty:
         return go.Figure()
 
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=("Taux de Succès par Méthode", "Tweets Récupérés par Méthode"),
+        subplot_titles=("Taux de SuccÃ¨s par MÃ©thode", "Tweets RÃ©cupÃ©rÃ©s par MÃ©thode"),
         specs=[[{"type": "bar"}, {"type": "bar"}]],
     )
 
-    # Graphique 1: Taux de succès
+    # Graphique 1: Taux de succÃ¨s
     fig.add_trace(
         go.Bar(
-            x=scraping_stats_df['Méthode'],
-            y=scraping_stats_df['Taux de Succès (%)'].str.rstrip('%').astype(float),
-            name="Taux de Succès",
+            x=scraping_stats_df['MÃ©thode'],
+            y=scraping_stats_df['Taux de SuccÃ¨s (%)'].str.rstrip('%').astype(float),
+            name="Taux de SuccÃ¨s",
             marker_color='#3498db',
-            text=scraping_stats_df['Taux de Succès (%)'],
+            text=scraping_stats_df['Taux de SuccÃ¨s (%)'],
             textposition='auto',
         ),
         row=1,
         col=1,
     )
 
-    # Graphique 2: Tweets récupérés
+    # Graphique 2: Tweets rÃ©cupÃ©rÃ©s
     fig.add_trace(
         go.Bar(
-            x=scraping_stats_df['Méthode'],
-            y=scraping_stats_df['Tweets Récupérés'],
+            x=scraping_stats_df['MÃ©thode'],
+            y=scraping_stats_df['Tweets RÃ©cupÃ©rÃ©s'],
             name="Tweets",
             marker_color='#27ae60',
-            text=scraping_stats_df['Tweets Récupérés'],
+            text=scraping_stats_df['Tweets RÃ©cupÃ©rÃ©s'],
             textposition='auto',
         ),
         row=1,
         col=2,
     )
 
-    fig.update_xaxes(title_text="Méthode", row=1, col=1)
-    fig.update_xaxes(title_text="Méthode", row=1, col=2)
+    fig.update_xaxes(title_text="MÃ©thode", row=1, col=1)
+    fig.update_xaxes(title_text="MÃ©thode", row=1, col=2)
     fig.update_yaxes(title_text="Taux (%)", row=1, col=1)
     fig.update_yaxes(title_text="Nombre de Tweets", row=1, col=2)
 
@@ -493,7 +493,7 @@ def create_scraping_methods_chart(scraping_stats_df: pd.DataFrame) -> go.Figure:
 
 
 def create_nitter_instances_chart(nitter_stats_df: pd.DataFrame) -> go.Figure:
-    """Crée un graphique des performances des instances Nitter"""
+    """CrÃ©e un graphique des performances des instances Nitter"""
     if nitter_stats_df.empty:
         return go.Figure()
 
@@ -501,17 +501,17 @@ def create_nitter_instances_chart(nitter_stats_df: pd.DataFrame) -> go.Figure:
 
     fig.add_trace(go.Bar(
         x=nitter_stats_df['Instance'],
-        y=nitter_stats_df['Taux de Succès (%)'].str.rstrip('%').astype(float),
-        name="Taux de Succès",
+        y=nitter_stats_df['Taux de SuccÃ¨s (%)'].str.rstrip('%').astype(float),
+        name="Taux de SuccÃ¨s",
         marker_color='#9b59b6',
-        text=nitter_stats_df['Taux de Succès (%)'],
+        text=nitter_stats_df['Taux de SuccÃ¨s (%)'],
         textposition='auto',
     ))
 
     fig.update_layout(
-        title="Taux de Succès par Instance Nitter",
+        title="Taux de SuccÃ¨s par Instance Nitter",
         xaxis_title="Instance",
-        yaxis_title="Taux de Succès (%)",
+        yaxis_title="Taux de SuccÃ¨s (%)",
         height=400,
         template="plotly_white",
     )

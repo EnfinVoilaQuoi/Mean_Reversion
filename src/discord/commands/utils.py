@@ -5,7 +5,7 @@ from datetime import datetime
 import discord
 
 from ...database.models import Token
-from ...scrapers.token_screener import find_token_by_symbol_or_address
+from ...utils.token_utils import find_token_by_symbol_or_address
 
 
 def format_duration(seconds: int) -> str:
